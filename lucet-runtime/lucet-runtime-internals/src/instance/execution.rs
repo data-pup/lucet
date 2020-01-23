@@ -81,8 +81,8 @@ use std::sync::{Condvar, Mutex, Weak};
 
 use crate::instance::{Instance, TerminationDetails};
 
-/// All instance state a remote kill switch needs to determine if and how to signal that execution
-/// should stop.
+/// All of the instance state that a remote kill switch needs to determine if and how to signal
+/// that execution should stop.
 ///
 /// Some definitions for reference in this struct's documentation:
 /// * "stopped" means "stop executing at some point before reaching the end of the entrypoint
