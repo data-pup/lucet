@@ -3,7 +3,7 @@ mod siginfo_ext;
 pub mod signals;
 pub mod state;
 
-pub use crate::instance::execution::{KillError, KillState, KillSuccess, KillSwitch};
+pub use crate::instance::execution::{KillError, KillResult, KillState, KillSuccess, KillSwitch};
 pub use crate::instance::signals::{signal_handler_none, SignalBehavior, SignalHandler};
 pub use crate::instance::state::State;
 

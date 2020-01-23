@@ -241,7 +241,12 @@ pub enum KillError {
     NotTerminable,
 }
 
-type KillResult = Result<KillSuccess, KillError>;
+/// The outcome of a `KillSwitch` firing.
+///
+/// Note: This `Result` only describes the behavior taken by `KillSwitch::terminate`, not
+/// necessarily what caused the associated instance to stop. See
+/// [KillSwitch::terminate](struct.KillSwitch.html#method.terminate) for more details.
+pub type KillResult = Result<KillSuccess, KillError>;
 
 impl KillSwitch {
     pub(crate) fn new(state: Weak<KillState>) -> Self {
