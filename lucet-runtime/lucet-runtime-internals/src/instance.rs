@@ -816,6 +816,9 @@ impl Instance {
                 "instance must be ready or non-fatally faulted",
             ));
         }
+        if let Some(x) = self.kill_state.huhu() {
+            return Err(Error::RuntimeTerminated(x));
+        }
         if func.ptr.as_usize() == 0 {
             return Err(Error::InvalidArgument(
                 "entrypoint function cannot be null; this is probably a malformed module",
@@ -1081,6 +1084,8 @@ pub enum TerminationDetails {
     /// Calls to `lucet_hostcall_terminate` provide a payload for use by the embedder.
     Provided(Box<dyn Any + 'static>),
     Remote,
+    /// FIXME KTM: Document this variant?
+    NeverRan,
 }
 
 impl TerminationDetails {
@@ -1131,6 +1136,7 @@ impl std::fmt::Debug for TerminationDetails {
             TerminationDetails::YieldTypeMismatch => write!(f, "YieldTypeMismatch"),
             TerminationDetails::Provided(_) => write!(f, "Provided(Any)"),
             TerminationDetails::Remote => write!(f, "Remote"),
+            TerminationDetails::NeverRan => write!(f, "NeverRan"),
         }
     }
 }

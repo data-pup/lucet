@@ -29,8 +29,8 @@
 //! possible points of interest in an instance's lifecycle:
 //!
 //! * `Instance created`
-//!   - terminable: `false`
-//!   - execution_domain: `Guest`
+//!   - terminable: `true`
+//!   - execution_domain: `Pending`
 //! * `Instance::run called`
 //!   - terminable: `true`
 //!   - execution_domain: `Guest`
@@ -146,9 +146,9 @@ pub unsafe extern "C" fn exit_guest_region(instance: *mut Instance) {
 impl KillState {
     pub fn new() -> KillState {
         KillState {
-            terminable: AtomicBool::new(false),
+            terminable: AtomicBool::new(true),
             tid_change_notifier: Condvar::new(),
-            execution_domain: Mutex::new(Domain::Guest),
+            execution_domain: Mutex::new(Domain::Pending),
             thread_id: Mutex::new(None),
         }
     }
@@ -169,14 +169,15 @@ impl KillState {
         &self.terminable as *const AtomicBool
     }
 
-    pub fn begin_hostcall(&self) {
+    pub fn begin_hostcall(&self) -> Option<TerminationDetails> {
         // Lock the current execution domain, so we can update to `Hostcall`.
         let mut current_domain = self.execution_domain.lock().unwrap();
         match *current_domain {
-            Domain::Guest => {
+            Domain::Guest | Domain::Pending => {
                 // Guest is the expected domain until this point. Switch to the Hostcall
                 // domain so we know to not interrupt this instance.
                 *current_domain = Domain::Hostcall;
+                None
             }
             Domain::Hostcall => {
                 panic!(
@@ -184,7 +185,11 @@ impl KillState {
                 );
             }
             Domain::Terminated => {
-                panic!("Invalid state: Instance marked as terminated while in guest code. This should be an error.");
+                // panic!("Invalid state: Instance marked as terminated while in guest code. This should be an error.");
+                // DEV KTM: what if we just throw it out here? FIDLAR
+                debug_assert!(!self.terminable.load(Ordering::SeqCst));
+                std::mem::drop(current_domain);
+                Some(TerminationDetails::Remote)
             }
         }
     }
@@ -205,6 +210,9 @@ impl KillState {
                 std::mem::drop(current_domain);
                 Some(TerminationDetails::Remote)
             }
+            Domain::Pending => {
+                panic!("Invalid state: Instance marked as pending while exiting a hostcall.");
+            }
         }
     }
 
@@ -217,9 +225,21 @@ impl KillState {
         *self.thread_id.lock().unwrap() = None;
         self.tid_change_notifier.notify_all();
     }
+
+    pub fn huhu(&self) -> Option<TerminationDetails> {
+        let current_domain = self.execution_domain.lock().unwrap();
+        match *current_domain {
+            Domain::Terminated => Some(TerminationDetails::NeverRan),
+            _ => None,
+        }
+    }
 }
 
+#[derive(Debug)]
 pub enum Domain {
+    // FIXME KTM: Rename `Ready` to match Instance's State
+    // In fact, this might not even be needed at all?
+    Pending,
     Guest,
     Hostcall,
     Terminated,
@@ -263,7 +283,7 @@ impl KillSwitch {
         // discarded, so we can't terminate.
         let state = self.state.upgrade().ok_or(KillError::NotTerminable)?;
 
-        // Attempt to take the flag indicating the instance may terminate
+        // Take the flag indicating the instance may terminate
         let terminable = state.terminable.swap(false, Ordering::SeqCst);
         if !terminable {
             return Err(KillError::NotTerminable);
@@ -302,8 +322,7 @@ impl KillSwitch {
                 }
             }
             Domain::Hostcall => {
-                // the guest is in a hostcall, so the only thing we can do is indicate it
-                // should terminate and wait.
+                // FIXME KTM: Replace comment
                 *execution_domain = Domain::Terminated;
                 Ok(KillSuccess::Pending)
             }
@@ -311,6 +330,11 @@ impl KillSwitch {
                 // Something else (another KillSwitch?) has already signalled this instance
                 // to exit when it has completed its hostcall. Nothing to do here.
                 Err(KillError::NotTerminable)
+            }
+            Domain::Pending => {
+                // FIXME KTM: Comments.
+                *execution_domain = Domain::Terminated;
+                Ok(KillSuccess::Pending)
             }
         };
         // explicitly drop the lock to be clear about how long we want to hold this lock, which is

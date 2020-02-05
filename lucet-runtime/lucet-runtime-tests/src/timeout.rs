@@ -100,10 +100,13 @@ macro_rules! timeout_tests {
 
             let kill_switch = inst.kill_switch();
 
-            thread::spawn(move || {
-                thread::sleep(Duration::from_millis(100));
-                assert_eq!(kill_switch.terminate(), Ok(KillSuccess::Signalled));
-            });
+            thread::Builder::new()
+                .name("timeout_in_guest".to_owned())
+                .spawn(move || {
+                    thread::sleep(Duration::from_millis(100));
+                    assert_eq!(kill_switch.terminate(), Ok(KillSuccess::Pending));
+                })
+                .expect("can spawn a thread");
 
             match inst.run("infinite_loop", &[]) {
                 Err(Error::RuntimeTerminated(TerminationDetails::Remote)) => {
@@ -127,7 +130,7 @@ macro_rules! timeout_tests {
                 .expect("instance can be created");
 
             let kill_switch = inst.kill_switch();
-            assert_eq!(kill_switch.terminate(), Err(KillError::NotTerminable));
+            assert_eq!(kill_switch.terminate(), Ok(KillSuccess::Pending));
 
             // if terminated before running, the guest should not start at all
             match inst.run("onetwothree", &[]) {
@@ -196,10 +199,13 @@ macro_rules! timeout_tests {
 
             let kill_switch = inst.kill_switch();
 
-            thread::spawn(move || {
-                thread::sleep(Duration::from_millis(100));
-                assert_eq!(kill_switch.terminate(), Ok(KillSuccess::Pending));
-            });
+            thread::Builder::new()
+                .name("timeout_in_hostcall".to_owned())
+                .spawn(move || {
+                    thread::sleep(Duration::from_millis(100));
+                    assert_eq!(kill_switch.terminate(), Ok(KillSuccess::Pending));
+                })
+                .expect("can spawn a thread");
 
             match inst.run("run_slow_hostcall", &[]) {
                 Err(Error::RuntimeTerminated(TerminationDetails::Remote)) => {}
@@ -222,10 +228,13 @@ macro_rules! timeout_tests {
 
             let kill_switch = inst.kill_switch();
 
-            thread::spawn(move || {
-                thread::sleep(Duration::from_millis(100));
-                assert_eq!(kill_switch.terminate(), Ok(KillSuccess::Pending));
-            });
+            thread::Builder::new()
+                .name("timeout_while_yielded".to_owned())
+                .spawn(move || {
+                    thread::sleep(Duration::from_millis(100));
+                    assert_eq!(kill_switch.terminate(), Ok(KillSuccess::Pending));
+                })
+                .expect("can spawn a thread");
 
             match inst.run("run_yielding_hostcall", &[]) {
                 Ok(RunResult::Yielded(EmptyYieldVal)) => {}
@@ -259,13 +268,16 @@ macro_rules! timeout_tests {
 
             let kill_switch = inst.kill_switch();
 
-            let t = thread::spawn(move || {
-                assert!(kill_switch.terminate().is_err()); // fails too soon
-                thread::sleep(Duration::from_millis(100));
-                assert!(kill_switch.terminate().is_ok()); // works
-                thread::sleep(Duration::from_millis(100));
-                assert!(kill_switch.terminate().is_err()); // fails too soon
-            });
+            let t = thread::Builder::new()
+                .name("timeout_killswitch_reuse".to_owned())
+                .spawn(move || {
+                    assert!(kill_switch.terminate().is_err()); // fails too soon
+                    thread::sleep(Duration::from_millis(100));
+                    assert!(kill_switch.terminate().is_ok()); // works
+                    thread::sleep(Duration::from_millis(100));
+                    assert!(kill_switch.terminate().is_err()); // fails too soon
+                })
+                .expect("can spawn a thread");
 
             thread::sleep(Duration::from_millis(10));
 
@@ -291,18 +303,24 @@ macro_rules! timeout_tests {
             let kill_switch = inst.kill_switch();
             let second_kill_switch = inst.kill_switch();
 
-            thread::spawn(move || {
-                thread::sleep(Duration::from_millis(100));
-                assert_eq!(kill_switch.terminate(), Ok(KillSuccess::Signalled));
-            });
+            thread::Builder::new()
+                .name("double_timeout 1".to_owned())
+                .spawn(move || {
+                    thread::sleep(Duration::from_millis(100));
+                    assert_eq!(kill_switch.terminate(), Ok(KillSuccess::Signalled));
+                })
+                .expect("can spawn a thread");
 
-            thread::spawn(move || {
-                thread::sleep(Duration::from_millis(200));
-                assert_eq!(
-                    second_kill_switch.terminate(),
-                    Err(KillError::NotTerminable)
-                );
-            });
+            thread::Builder::new()
+                .name("double_timeout 2".to_owned())
+                .spawn(move || {
+                    thread::sleep(Duration::from_millis(200));
+                    assert_eq!(
+                        second_kill_switch.terminate(),
+                        Err(KillError::NotTerminable)
+                    );
+                })
+                .expect("can spawn a thread");
 
             match inst.run("infinite_loop", &[]) {
                 Err(Error::RuntimeTerminated(TerminationDetails::Remote)) => {

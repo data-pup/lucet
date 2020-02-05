@@ -311,6 +311,11 @@ pub mod lucet_result {
                                 reason: lucet_terminated_reason::Remote,
                                 provided: std::ptr::null_mut(),
                             },
+                            // FIXME KTM: This is a real shot in the dark.
+                            TerminationDetails::NeverRan => lucet_terminated {
+                                reason: lucet_terminated_reason::NeverRan,
+                                provided: std::ptr::null_mut(),
+                            },
                         },
                     },
                 },
@@ -365,6 +370,7 @@ pub mod lucet_result {
         BorrowError,
         Provided,
         Remote,
+        NeverRan,
     }
 
     #[repr(C)]
