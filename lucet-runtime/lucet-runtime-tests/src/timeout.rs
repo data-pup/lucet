@@ -129,8 +129,15 @@ macro_rules! timeout_tests {
             let kill_switch = inst.kill_switch();
             assert_eq!(kill_switch.terminate(), Err(KillError::NotTerminable));
 
-            // not being terminable, the instance still runs and is unaffected
-            run_onetwothree(&mut inst);
+            // if terminated before running, the guest should not start at all
+            match inst.run("onetwothree", &[]) {
+                Err(_) => {
+                    // this is also, what we want to see
+                    // FIXME KTM: We should specify a specific kind of fault
+                    // in the match above.
+                }
+                res => panic!("unexpected result: {:?}", res),
+            }
         }
 
         #[test]
